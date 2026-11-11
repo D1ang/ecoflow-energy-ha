@@ -47,6 +47,10 @@ _LOGGER = logging.getLogger(__name__)
 
 POLL_INTERVAL = timedelta(minutes=10)
 LOGIN_BACKOFF = timedelta(hours=1)
+# After a failed read, ask again after a minute this many times; the last
+# amount stays on display meanwhile.
+RETRY_INTERVAL = timedelta(minutes=1)
+QUICK_RETRIES = 5
 # A finished day is read again this long after midnight, so the cloud has
 # closed it; until then the last amount seen that day stands in.
 SETTLE_AFTER = timedelta(hours=1)
@@ -89,6 +93,7 @@ class EnergyValueCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.last_seen: dict[str, Any] | None = None
         self.history_complete = False
         self.restored = False
+        self.failures = 0
         self._history_running = False
 
     async def async_restore(self) -> None:
@@ -142,22 +147,31 @@ class EnergyValueCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         try:
             rows = await self._async_read(day)
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            self.update_interval = (
-                LOGIN_BACKOFF if isinstance(err, SummaryLoginError) else POLL_INTERVAL
-            )
-            if self.readable or self.day is None:
+            self.failures += 1
+            refused = isinstance(err, SummaryLoginError)
+            if refused:
+                self.update_interval = LOGIN_BACKOFF
+            elif self.failures <= QUICK_RETRIES:
+                self.update_interval = RETRY_INTERVAL
+            else:
+                self.update_interval = POLL_INTERVAL
+            if self.failures == 1:
                 _LOGGER.warning(
                     "Could not read the energy value (%s): %s",
                     device_log_tag(self.serial),
                     err,
                 )
-            self.readable = False
+            # A short network hiccup keeps the last amount on display; only a
+            # refusal or a run of failures makes the sensors unavailable.
+            if refused or self.failures > QUICK_RETRIES:
+                self.readable = False
             self.day = self.day or day
             return self.data
-        if not self.readable and self.day is not None:
+        if self.failures:
             _LOGGER.info(
                 "Energy value readable again (%s)", device_log_tag(self.serial)
             )
+        self.failures = 0
         self.update_interval = POLL_INTERVAL
 
         changed = False
