@@ -2679,6 +2679,9 @@
       },
       "other_vehicle_energy": {
         "name": "Wallbox-Energie abgeschlossener Ladevorgänge nicht zugeordnet"
+      },
+      "energy_value_today": {
+        "name": "Energiewert heute"
       }
     },
     "binary_sensor": {

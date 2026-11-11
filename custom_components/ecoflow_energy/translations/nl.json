@@ -2679,6 +2679,9 @@
       },
       "other_vehicle_energy": {
         "name": "Energie voltooide laadsessies laadpaal (niet toegewezen)"
+      },
+      "energy_value_today": {
+        "name": "Energiewaarde vandaag"
       }
     },
     "binary_sensor": {

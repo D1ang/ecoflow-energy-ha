@@ -2679,6 +2679,9 @@
       },
       "other_vehicle_energy": {
         "name": "Energia di ricarica completata wallbox non assegnata"
+      },
+      "energy_value_today": {
+        "name": "Valore energetico oggi"
       }
     },
     "binary_sensor": {

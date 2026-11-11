@@ -75,6 +75,12 @@ def _vehicle_sensor_keys(source: str | None = None) -> set[str]:
 
 VEHICLE_SENSOR_KEYS = _vehicle_sensor_keys()
 
+# The app's day amount for a STREAM system, created in energy_value.py. Read
+# from the source like the vehicle keys, so a rename there cannot pass unseen.
+ENERGY_VALUE_SENSOR_KEYS = _vehicle_sensor_keys(
+    Path("custom_components/ecoflow_energy/energy_value.py").read_text()
+)
+
 
 def _collect(pattern: str) -> dict[str, Any]:
     """Collect entity definitions from all const.py lists matching a pattern."""
@@ -137,7 +143,8 @@ def _readback_labels() -> set[str]:
 PLATFORM_KEYS = {
     "sensor": _labels(r"[A-Z0-9]+_SENSORS")
     | DIAGNOSTIC_SENSOR_KEYS
-    | VEHICLE_SENSOR_KEYS,
+    | VEHICLE_SENSOR_KEYS
+    | ENERGY_VALUE_SENSOR_KEYS,
     "binary_sensor": _labels(r"[A-Z0-9]+_BINARY_SENSORS") | _readback_labels(),
     "switch": _labels(r"[A-Z0-9]+_SWITCHES"),
     "number": _labels(r"[A-Z0-9]+_NUMBERS"),

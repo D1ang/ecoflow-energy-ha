@@ -2679,6 +2679,9 @@
       },
       "other_vehicle_energy": {
         "name": "Wallbox Completed Charging Energy Unassigned"
+      },
+      "energy_value_today": {
+        "name": "Energy Value Today"
       }
     },
     "binary_sensor": {

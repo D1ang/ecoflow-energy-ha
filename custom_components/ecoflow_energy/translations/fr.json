@@ -2679,6 +2679,9 @@
       },
       "other_vehicle_energy": {
         "name": "Énergie des charges terminées de la wallbox (non attribuée)"
+      },
+      "energy_value_today": {
+        "name": "Valeur énergétique aujourd'hui"
       }
     },
     "binary_sensor": {

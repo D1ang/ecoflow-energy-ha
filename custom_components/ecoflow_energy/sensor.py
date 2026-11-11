@@ -144,6 +144,34 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
+    if entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_APP:
+        stream_systems = [
+            source
+            for source in coordinators.values()
+            if source.device_type == DEVICE_TYPE_STREAM_AC5000
+        ]
+        if stream_systems:
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            from .const import CONF_EMAIL, CONF_PASSWORD
+            from .ecoflow.app_api import AppApiClient
+            from .energy_value import async_setup_energy_value
+
+            summary_api = AppApiClient(
+                async_get_clientsession(hass),
+                entry.data[CONF_EMAIL],
+                entry.data[CONF_PASSWORD],
+            )
+            for system in stream_systems:
+                await async_setup_energy_value(
+                    hass,
+                    entry,
+                    system.device_sn,
+                    system.device_info,
+                    async_add_entities,
+                    summary_api,
+                )
+
     if (
         entry.data.get(CONF_VEHICLE_ENERGY)
         and entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_APP

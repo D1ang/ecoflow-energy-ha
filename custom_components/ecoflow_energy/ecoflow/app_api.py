@@ -15,6 +15,13 @@ from typing import Any, Protocol
 
 import aiohttp
 
+from .app_summary import (
+    SUMMARY_PATH,
+    day_summary_body,
+    encode_body,
+    parse_day_summary,
+    signature_headers,
+)
 from .charging_history import identity, is_identity
 from .const import IOT_API_BASE, get_device_type
 from .enhanced_auth import (
@@ -54,6 +61,10 @@ class HistoryStorageError(OSError):
 
 class HistoryLoginError(ValueError):
     """History sign-in failed; callers must back off instead of retrying per charger."""
+
+
+class SummaryLoginError(ValueError):
+    """Sign-in for the day summary failed; back off instead of retrying."""
 
 
 class AppApiClient:
@@ -323,6 +334,53 @@ class AppApiClient:
                     raise ValueError("Incomplete charging history")
                 return rows
         raise ValueError("Charging history exceeds pagination limit")
+
+    async def get_stream_day_summary(
+        self, serial: str, day: str, timezone: str
+    ) -> dict[str, dict[str, Any]]:
+        """Read the app's summary rows of one local day for a STREAM system.
+
+        Read-only. A refusal gets one login retry; any other failure raises,
+        so a failed read is never presented as an empty day. Never log the
+        response, the serial or the token.
+        """
+        if not self._token and not await self.login():
+            raise SummaryLoginError("Day summary login failed")
+        body = day_summary_body(serial, day, timezone)
+        data = encode_body(body)
+        payload: Any = None
+        for attempt in range(2):
+            headers = {
+                "Content-Type": "application/json;charset=utf-8",
+                "Authorization": f"Bearer {self._token}",
+                "lang": "en-us",
+                **signature_headers("POST", SUMMARY_PATH, body["params"], data),
+            }
+            async with self._session.post(
+                f"{self._base_url}{SUMMARY_PATH}",
+                data=data.encode(),
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                refused = response.status in (401, 403)
+                if not refused:
+                    response.raise_for_status()
+                    payload = await response.json(content_type=None)
+                    refused = (
+                        isinstance(payload, dict) and str(payload.get("code")) == "401"
+                    )
+                if refused and attempt == 0:
+                    if not await self.login():
+                        raise SummaryLoginError("Day summary login failed")
+                    continue
+                if refused:
+                    self._token = None
+                    raise SummaryLoginError("Day summary session rejected")
+            break
+        if not isinstance(payload, dict) or str(payload.get("code")) != "0":
+            code = payload.get("code") if isinstance(payload, dict) else None
+            raise ValueError(f"Day summary request rejected (code {code})")
+        return parse_day_summary(payload.get("data"))
 
     async def get_mqtt_credentials(self) -> dict[str, Any] | None:
         """Fetch Enhanced Mode MQTT credentials using the stored token.
