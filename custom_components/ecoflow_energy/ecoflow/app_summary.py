@@ -107,3 +107,65 @@ def parse_day_summary(rows: Any) -> dict[str, dict[str, Any]]:
             "name": name if isinstance(name, str) else "",
         }
     return result
+
+
+# Rows that can be non-zero on a day the system recorded nothing: a tariff and
+# a forecast exist without any measurement.
+_NOT_MEASURED = frozenset({"ELECTRICITY_PRICE", "SOLAR_PREDICT"})
+
+
+def day_is_empty(rows: dict[str, dict[str, Any]]) -> bool:
+    """True when a day holds no measured row at all or nothing but zeros."""
+    return all(
+        row["value"] == 0 for page, row in rows.items() if page not in _NOT_MEASURED
+    )
+
+
+def month_totals(
+    days: dict[str, float], today: str | None, today_value: float | None
+) -> dict[str, float]:
+    """Sum per calendar month (YYYY-MM), to compare with the app's calendar."""
+    totals: dict[str, float] = {}
+    for day, value in days.items():
+        if day != today:
+            totals[day[:7]] = totals.get(day[:7], 0.0) + value
+    if today is not None and today_value is not None:
+        totals[today[:7]] = totals.get(today[:7], 0.0) + today_value
+    return {month: round(totals[month], 2) for month in sorted(totals)}
+
+
+def energy_value_total(days: dict[str, float], today: str, today_value: float) -> float:
+    """Finished days plus today; today is never counted from the stored days."""
+    return sum(value for day, value in days.items() if day != today) + today_value
+
+
+def valid_saved_days(saved: Any) -> bool:
+    """Reject a damaged store instead of publishing a wrong total from it."""
+    if not isinstance(saved, dict):
+        return False
+    days, provisional = saved.get("days"), saved.get("provisional")
+    seen = saved.get("last_seen")
+
+    def amount(value: Any) -> bool:
+        return (
+            type(value) in (int, float)
+            and value == value
+            and abs(value) != float("inf")
+        )
+
+    return (
+        isinstance(days, dict)
+        and all(isinstance(day, str) and amount(value) for day, value in days.items())
+        and (
+            seen is None
+            or (
+                isinstance(seen, dict)
+                and set(seen) == {"day", "value"}
+                and isinstance(seen["day"], str)
+                and amount(seen["value"])
+            )
+        )
+        and isinstance(provisional, list)
+        and all(isinstance(day, str) for day in provisional)
+        and type(saved.get("complete")) is bool
+    )

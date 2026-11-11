@@ -12,10 +12,14 @@ from ecoflow_energy.ecoflow.app_api import AppApiClient, SummaryLoginError
 from ecoflow_energy.ecoflow.app_summary import (
     ENERGY_VALUE_PAGE,
     SUMMARY_PATH,
+    day_is_empty,
     day_summary_body,
     encode_body,
+    energy_value_total,
+    month_totals,
     parse_day_summary,
     signature_headers,
+    valid_saved_days,
 )
 
 SERIAL = "ES21TEST0001"
@@ -179,3 +183,44 @@ async def test_client_raises_on_failed_login_and_on_rejection():
     session.post.return_value = _response({"code": "6000", "message": "no"})
     with pytest.raises(ValueError, match="6000"):
         await client.get_stream_day_summary(SERIAL, "2026-11-11", "UTC")
+
+
+def test_empty_day_total_and_saved_days():
+    assert day_is_empty({})
+    assert day_is_empty({"SOLARVALUE": {"value": 0.0}, "GRID": {"value": 0}})
+    assert not day_is_empty({"SOLARVALUE": {"value": 0.0}, "GRID": {"value": 5}})
+
+    days = {"2026-11-09": 1.5, "2026-11-10": -0.25, "2026-11-11": 99.0}
+    # A stored amount for today must not be counted next to the live one.
+    assert energy_value_total(days, "2026-11-11", -1.0) == pytest.approx(0.25)
+    assert energy_value_total({}, "2026-11-11", 2.0) == 2.0
+
+    good = {"days": {"2026-11-10": 1}, "provisional": ["2026-11-10"], "complete": False}
+    assert valid_saved_days(good)
+    assert not valid_saved_days(None)
+    assert not valid_saved_days({**good, "days": {"2026-11-10": "1"}})
+    assert not valid_saved_days({**good, "days": {"2026-11-10": float("nan")}})
+    assert not valid_saved_days({**good, "provisional": "2026-11-10"})
+    assert not valid_saved_days({**good, "complete": 1})
+    assert valid_saved_days({**good, "last_seen": None})
+    assert valid_saved_days({**good, "last_seen": {"day": "2026-11-11", "value": -1.6}})
+    assert not valid_saved_days({**good, "last_seen": {"day": "2026-11-11"}})
+    assert not valid_saved_days({**good, "last_seen": {"day": 1, "value": 1}})
+    assert not valid_saved_days(
+        {**good, "last_seen": {"day": "2026-11-11", "value": float("inf")}}
+    )
+
+
+def test_forecast_and_tariff_do_not_make_a_day_count_and_month_sums():
+    quiet = {
+        "SOLARVALUE": {"value": 0.0},
+        "GRID": {"value": 0.0},
+        "ELECTRICITY_PRICE": {"value": 0.57},
+        "SOLAR_PREDICT": {"value": 643.9},
+    }
+    assert day_is_empty(quiet)
+    assert not day_is_empty({**quiet, "LOAD": {"value": 1.0}})
+
+    days = {"2026-10-30": 1.0, "2026-10-31": 0.5, "2026-11-01": -0.2, "2026-11-11": 9}
+    assert month_totals(days, "2026-11-11", -1.6) == {"2026-10": 1.5, "2026-11": -1.8}
+    assert month_totals({}, None, None) == {}

@@ -2682,6 +2682,9 @@
       },
       "energy_value_today": {
         "name": "Energy Value Today"
+      },
+      "energy_value_total": {
+        "name": "Energy Value Total"
       }
     },
     "binary_sensor": {
